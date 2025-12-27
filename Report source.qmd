@@ -1,0 +1,141 @@
+---
+title: "Outlier detection from raw text"
+author: "Gabriel Pišvejc"
+format: pdf
+---
+
+```{r Prepare the env}
+
+library(tidyverse)
+library(tidymodels)
+library(tm)
+library(dbscan)
+
+rm(list = ls())
+
+```
+
+```{r Load data}
+
+data <- read.csv("data/2/data_rt.csv")
+
+# And shuffle it, since the first half of the dataset is just negative reviews, and the second half is just positive. 
+data <- data[sample(nrow(data)), ]
+
+```
+
+# Bag of words preprocessing
+
+```{r Bag of words preprocessing}
+
+corpus <- Corpus(VectorSource(data$reviews))
+
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation) # I may change this later
+#corpus <- tm_map(corpus, removeNumbers)
+#corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, stripWhitespace)
+
+BoW_data <- DocumentTermMatrix(corpus)
+BoW_data <- BoW_data %>% as.matrix() %>% as_tibble()
+
+BoW_data <- cbind(BoW_data, data$labels)
+
+colnames(BoW_data)[colnames(BoW_data) == "data$labels"] <- "labels_target"
+
+
+BoW_data$labels_target <- 
+  BoW_data$labels_target %>%
+  as.factor()
+
+```
+
+## Baseline model quality evaluation
+
+Since we are interested in removing outliers in order to improve the quality of our ML models, we need to see how well these perform before any outliers have been removed. All the models will be evaluated based on their AUC score. 
+
+```{r Define the diagnostic function}
+
+test_xgb <- 
+  function(input){
+    
+    data <- input 
+      
+    set.seed(1989)
+    
+    split <- initial_split(data,
+                           prop = 0.8,
+                           strata = labels_target)
+    
+    train <- training(split)
+    test  <- testing(split)
+    
+    rec <- recipe(labels_target ~ ., data = train)
+    
+    xgb_model <- boost_tree(
+      trees = 500,
+      tree_depth = 6, 
+      learn_rate = 0.1,
+      loss_reduction = 0,
+      sample_size = 1) %>%
+      set_mode("classification") %>%
+      set_engine("xgboost")
+    
+    wf <- 
+      workflow() %>%
+      add_recipe(rec) %>%
+      add_model(xgb_model)
+    
+    fit <- fit(wf, data = train)
+    
+    
+    pred <- predict(fit, test, type = "prob")
+    
+    results <- test %>%
+      select(labels_target) %>%
+      bind_cols(pred)
+    
+    
+    roc_res <- roc_curve(results, truth = labels_target, .pred_0)
+    
+    auc <- roc_auc(results, truth = labels_target, .pred_0)[".estimate"] %>% pull()
+    
+    
+    ggplot(roc_res,
+           aes(x = 1 - specificity, y = sensitivity)) +
+           geom_ribbon(aes(ymin = 0, ymax = sensitivity), fill = "cyan3", alpha = 0.3) +
+           geom_line(color = "orange2") +
+           geom_abline(lty = 2, color = "gray") +
+           labs(title = "ROC Curve",
+                 x = "False Positive Rate",
+                 y = "True Positive Rate") +
+           geom_label(aes(x = 0.85, y = 0.1,
+                           label = paste0("AUC = ", round(auc, 3))),
+                       size = 4) +
+           theme_bw() 
+      
+}
+
+```
+
+
+```{r Get a baseline}
+
+test_xgb(BoW_data)
+
+```
+
+
+
+
+<!-- I will not be using an autoencoder there is like 20k features and 10k observations. I only have a CPU on the laptop I brought with me for Christmas... -->
+
+# LOF outlier detection
+
+```{r lof}
+
+
+```
+
+## Testing the improvement 
+
