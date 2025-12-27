@@ -134,8 +134,64 @@ test_xgb(BoW_data)
 
 ```{r lof}
 
+negative <- 
+  BoW_data %>% 
+  filter(labels_target == "0")
+
+negative$lof_index <- lof(negative %>% select(-labels_target))
+
+negative %>% 
+  select(lof_index) %>%
+  pull() %>%
+  density() %>%
+  plot(main = "negative")
+
+positive <- 
+  BoW_data %>% 
+  filter(labels_target == "1")
+
+positive$lof_index <- lof(positive %>% select(-labels_target))
+
+positive %>% 
+  select(lof_index) %>%
+  pull() %>%
+  density() %>%
+  plot(main = "positive")
+
+
+```
+
+```{r remove the highest scores}
+
+negative <- negative[negative$lof_index > quantile(negative$lof_index, 0.995),]
+
+positive <- positive[positive$lof_index > quantile(positive$lof_index, 0.995),]
+
+```
+
+```{r Put everything back together}
+
+negative$labels_target <- 0
+positive$labels_target <- 1
+
+lof_cleaned_data <- rbind(negative, positive)
+
+lof_cleaned_data <- lof_cleaned_data[sample(nrow(lof_cleaned_data)), ]
+
+lof_cleaned_data$labels_target <- lof_cleaned_data$labels_target %>%
+  as.factor() 
 
 ```
 
 ## Testing the improvement 
+
+```{r}
+
+test_xgb(lof_cleaned_data)
+
+```
+
+
+
+
 
