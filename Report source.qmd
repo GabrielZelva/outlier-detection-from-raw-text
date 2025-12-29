@@ -136,6 +136,8 @@ test_xgb(BoW_data)
 
 # LOF outlier detection
 
+Next up, we can use the local outlier factor scores (LOFs) to see if any reviews are way too unique. We will first separate the 2 groups in the **training data** and then, run the LOF algorithm on each group, noting down the scores for each point and taking a look at the PDF of the resulting distribution. 
+
 ```{r lof}
 
 negative <- 
@@ -165,6 +167,8 @@ positive %>%
 
 ```
 
+We see that bath the positive and negative distributions are normal-ish, however, both show a strong positive skew. The point where we make the cut is however bound to be arbitrary, therefore, we will just decide to keep the 99.5% of the data. 
+
 ```{r remove the highest scores}
 
 negative <- negative[negative$lof_index < quantile(negative$lof_index, 0.995),]
@@ -174,6 +178,7 @@ positive <- positive[positive$lof_index < quantile(positive$lof_index, 0.995),]
 ```
 
 ```{r Put everything back together}
+#| include: false
 
 negative$labels_target <- 0
 positive$labels_target <- 1
@@ -187,7 +192,7 @@ lof_cleaned_data$labels_target <- lof_cleaned_data$labels_target %>%
 
 ```
 
-## Testing the improvement 
+Once the data is put back together, we can observe the impact on the AUC. 
 
 ```{r}
 
@@ -196,6 +201,8 @@ test_xgb(lof_cleaned_data)
 ```
 
 # IsoForest outlier detection
+
+In a very similar fashion, we can try to find out the most unique reviews using the isolation forest model, separating positives and negatives in the **Training data** and noting down the score
 
 ```{r Isoforest}
 
@@ -232,6 +239,8 @@ positive %>%
 
 ```
 
+While the distributions resemble a Poisson distribution a bit more then the previous ones, the cut-off point remains completely arbitrary. Therefore, we will use the same quantile as before. 
+
 ```{r remove the highest scores 2}
 
 negative <- negative[negative$iso_index < quantile(negative$iso_index, 0.995),]
@@ -241,6 +250,7 @@ positive <- positive[positive$iso_index < quantile(positive$iso_index, 0.995),]
 ```
 
 ```{r Put everything back together}
+#| include: false
 
 negative$labels_target <- 0
 positive$labels_target <- 1
@@ -254,9 +264,15 @@ iso_cleaned_data$labels_target <- iso_cleaned_data$labels_target %>%
 
 ```
 
+And once again, we can observe the effect on the AUC. 
+
 ```{r}
 
 test_xgb(iso_cleaned_data)
 
 ```
+
+# Conclusions
+
+While by no means exhaustive, this report hopes to show the importance of outlier handling. In order to give a statistically valid proof... **Write something not ironic**
 
