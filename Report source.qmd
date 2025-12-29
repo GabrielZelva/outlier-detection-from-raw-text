@@ -5,18 +5,20 @@ format: pdf
 ---
 
 ```{r Prepare the env}
+#| include: false
 
 library(tidyverse)
 library(tidymodels)
 library(tm)
 library(dbscan)
+library(isotree)
 
 rm(list = ls())
 
 ```
 
 ```{r Load data}
-
+#| include: false
 data <- read.csv("data/2/data_rt.csv")
 
 # And shuffle it, since the first half of the dataset is just negative reviews, and the second half is just positive. 
@@ -27,13 +29,11 @@ data <- data[sample(nrow(data)), ]
 # Bag of words preprocessing
 
 ```{r Bag of words preprocessing}
-
+#| echo: false
 corpus <- Corpus(VectorSource(data$reviews))
 
 corpus <- tm_map(corpus, content_transformer(tolower))
-corpus <- tm_map(corpus, removePunctuation) # I may change this later
-#corpus <- tm_map(corpus, removeNumbers)
-#corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, removePunctuation)
 corpus <- tm_map(corpus, stripWhitespace)
 
 BoW_data <- DocumentTermMatrix(corpus)
@@ -163,9 +163,9 @@ positive %>%
 
 ```{r remove the highest scores}
 
-negative <- negative[negative$lof_index > quantile(negative$lof_index, 0.995),]
+negative <- negative[negative$lof_index < quantile(negative$lof_index, 0.995),]
 
-positive <- positive[positive$lof_index > quantile(positive$lof_index, 0.995),]
+positive <- positive[positive$lof_index < quantile(positive$lof_index, 0.995),]
 
 ```
 
@@ -191,7 +191,68 @@ test_xgb(lof_cleaned_data)
 
 ```
 
+# IsoForest outlier detection
+
+```{r Isoforest}
+
+negative <- 
+  BoW_data %>% 
+  filter(labels_target == "0")
+
+model <- isolation.forest(negative %>% select(-labels_target))
+
+negative$iso_index <- predict(model, negative %>% select(-labels_target)) %>%
+  as.numeric()
+
+negative %>% 
+  select(iso_index) %>%
+  pull() %>%
+  density() %>%
+  plot(main = "negative")
+
+positive <- 
+  BoW_data %>% 
+  filter(labels_target == "1")
+
+model <- isolation.forest(positive %>% select(-labels_target))
+
+positive$iso_index <- predict(model, positive %>% select(-labels_target)) %>%
+  as.numeric()
+
+positive %>% 
+  select(iso_index) %>%
+  pull() %>%
+  density() %>%
+  plot(main = "positive")
 
 
+```
 
+```{r remove the highest scores 2}
+
+negative <- negative[negative$iso_index < quantile(negative$iso_index, 0.995),]
+
+positive <- positive[positive$iso_index < quantile(positive$iso_index, 0.995),]
+
+```
+
+```{r Put everything back together}
+
+negative$labels_target <- 0
+positive$labels_target <- 1
+
+iso_cleaned_data <- rbind(negative, positive)
+
+iso_cleaned_data <- iso_cleaned_data[sample(nrow(iso_cleaned_data)), ]
+
+iso_cleaned_data$labels_target <- iso_cleaned_data$labels_target %>%
+  as.factor() 
+
+```
+
+```{r}
+
+test_xgb(iso_cleaned_data)
+
+```
 
