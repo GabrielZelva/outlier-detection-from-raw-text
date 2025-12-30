@@ -5,7 +5,6 @@ format: pdf
 ---
 
 ```{r Prepare the env}
-#| include: false
 
 library(tidyverse)
 library(tidymodels)
@@ -18,7 +17,6 @@ rm(list = ls())
 ```
 
 ```{r Load data}
-#| include: false
 data <- read.csv("data/2/data_rt.csv")
 
 # And shuffle it, since the first half of the dataset is just negative reviews, and the second half is just positive. 
@@ -30,10 +28,9 @@ data <- data[sample(nrow(data)), ]
 
 In this experiment, we will be playing with binary sentiment analysis on movie reviews. The data we have has 2 columns, in the first one, we have the reviews, in the second, either a 1 or a 0 to show whether they are positive or negative. Given the size of the dataset, (~10k reviews), the hardware I have with me (CPU) and the scope of this homework, I will only be working with Bag of words preprocessing. 
 
-For that, we can run the following code, where we first put all of the words to lower case, we remove punctuation and strip white-space irregularities. We then generate a document-term matrix and attach the labels back to it as a factor.
+For that, we can run the following code, where we put all of the words to lower case, remove punctuation and strip white-space irregularities. We then generate a document-term matrix and attach the labels back to it as a factor.
 
 ```{r Bag of words preprocessing}
-#| echo: false
 corpus <- Corpus(VectorSource(data$reviews))
 
 corpus <- tm_map(corpus, content_transformer(tolower))
@@ -53,6 +50,20 @@ BoW_data$labels_target <-
 
 ```
 
+```{r Get the train and test split}
+
+set.seed(1989)
+
+split <- initial_split(BoW_data,
+                       prop = 0.8,
+                       strata = labels_target)
+
+BoW_data <- training(split)
+test  <- testing(split)
+
+```
+
+
 ## Baseline model quality evaluation
 
 For each outlier handling method, we will train an XGBoost model with 500 trees of 6 deep on 80% of the available data and test it on the remaining 20%. Then, we will observe the AUC-score of the model and see whether removing data was actually any helpful and if so, then by how much. Each time we do this, we will take advantage of the following function. 
@@ -60,18 +71,9 @@ For each outlier handling method, we will train an XGBoost model with 500 trees 
 ```{r Define the diagnostic function}
 
 test_xgb <- 
-  function(input){
+  function(training_data){
     
-    data <- input 
-      
-    set.seed(1989)
-    
-    split <- initial_split(data,
-                           prop = 0.8,
-                           strata = labels_target)
-    
-    train <- training(split)
-    test  <- testing(split)
+    train = training_data
     
     rec <- recipe(labels_target ~ ., data = train)
     
@@ -129,14 +131,11 @@ test_xgb(BoW_data)
 
 ```
 
-
-
-
-<!-- I will not be using an autoencoder there is like 20k features and 10k observations. I only have a CPU on the laptop I brought with me for Christmas... -->
+<!-- I will not be using an autoencoder, there is like 20k features and 10k observations. I only have a CPU on the laptop I brought with me for Christmas... -->
 
 # LOF outlier detection
 
-Next up, we can use the local outlier factor scores (LOFs) to see if any reviews are way too unique. We will first separate the 2 groups in the **training data** and then, run the LOF algorithm on each group, noting down the scores for each point and taking a look at the PDF of the resulting distribution. 
+Next up, we can use the local outlier factor scores (LOFs) to see if any reviews are way too unique. We will first separate the 2 groups in the training data and then run the LOF algorithm on each group, noting down the scores for each point and taking a look at the PDF of the resulting distribution. 
 
 ```{r lof}
 
@@ -167,18 +166,17 @@ positive %>%
 
 ```
 
-We see that bath the positive and negative distributions are normal-ish, however, both show a strong positive skew. The point where we make the cut is however bound to be arbitrary, therefore, we will just decide to keep the 99.5% of the data. 
+We see that both the positive and negative distributions are normal-ish, however, both show a strong positive skew. The point where we make the cut is however bound to be arbitrary, therefore, we will just decide to keep the 95% of the data. 
 
 ```{r remove the highest scores}
 
-negative <- negative[negative$lof_index < quantile(negative$lof_index, 0.995),]
+negative <- negative[negative$lof_index < quantile(negative$lof_index, 0.95),]
 
-positive <- positive[positive$lof_index < quantile(positive$lof_index, 0.995),]
+positive <- positive[positive$lof_index < quantile(positive$lof_index, 0.95),]
 
 ```
 
 ```{r Put everything back together}
-#| include: false
 
 negative$labels_target <- 0
 positive$labels_target <- 1
@@ -189,6 +187,10 @@ lof_cleaned_data <- lof_cleaned_data[sample(nrow(lof_cleaned_data)), ]
 
 lof_cleaned_data$labels_target <- lof_cleaned_data$labels_target %>%
   as.factor() 
+
+lof_cleaned_data <-
+  lof_cleaned_data %>%
+  select(-lof_index)
 
 ```
 
@@ -202,7 +204,7 @@ test_xgb(lof_cleaned_data)
 
 # IsoForest outlier detection
 
-In a very similar fashion, we can try to find out the most unique reviews using the isolation forest model, separating positives and negatives in the **Training data** and noting down the score
+In a very similar fashion, we can try to find out the most unique reviews using the isolation forest model, separating positives and negatives in the training data and noting down the score
 
 ```{r Isoforest}
 
@@ -243,14 +245,13 @@ While the distributions resemble a Poisson distribution a bit more then the prev
 
 ```{r remove the highest scores 2}
 
-negative <- negative[negative$iso_index < quantile(negative$iso_index, 0.995),]
+negative <- negative[negative$iso_index < quantile(negative$iso_index, 0.95),]
 
-positive <- positive[positive$iso_index < quantile(positive$iso_index, 0.995),]
+positive <- positive[positive$iso_index < quantile(positive$iso_index, 0.95),]
 
 ```
 
 ```{r Put everything back together}
-#| include: false
 
 negative$labels_target <- 0
 positive$labels_target <- 1
@@ -261,6 +262,10 @@ iso_cleaned_data <- iso_cleaned_data[sample(nrow(iso_cleaned_data)), ]
 
 iso_cleaned_data$labels_target <- iso_cleaned_data$labels_target %>%
   as.factor() 
+
+iso_cleaned_data <-
+  iso_cleaned_data %>%
+  select(-iso_index)
 
 ```
 
@@ -274,5 +279,4 @@ test_xgb(iso_cleaned_data)
 
 # Conclusions
 
-While by no means exhaustive, this report hopes to show the importance of outlier handling. In order to give a statistically valid proof... **Write something not ironic**
-
+In this small experiment, we haven't actually seen any improvements to the AUC after the outlier removal. However, that could be due to a number of reasons, one of which being just the sheer stability of the XGBoost architecture. This is also by no means a proof of the null hypothesis, as we haven't generated the AUC distributions, just a singular sample from each one. 
