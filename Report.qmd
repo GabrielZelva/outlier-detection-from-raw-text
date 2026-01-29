@@ -1,7 +1,7 @@
 ---
 title: "Outlier detection from raw text"
 author: "Gabriel Pišvejc"
-format: pdf
+format: html
 ---
 
 ```{r Prepare the env}
@@ -251,7 +251,7 @@ positive <- positive[positive$iso_index < quantile(positive$iso_index, 0.95),]
 
 ```
 
-```{r Put everything back together}
+```{r Put everything back together 2}
 
 negative$labels_target <- 0
 positive$labels_target <- 1
